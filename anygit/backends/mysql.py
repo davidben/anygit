@@ -59,7 +59,8 @@ def flush():
         for instance in klass._save_list:
             try:
                 updates = instance.get_updates()
-                if not instance.new:
+                if instance.mutable:
+                    klass._object_store.insert({'_id' : instance.id})
                     klass._object_store.update(instance.id,
                                                updates)
                 else:
@@ -78,7 +79,7 @@ def flush():
 
 def destroy_session():
     if connection is not None:
-        connection.disconnect()
+        return None
 
 ## Internal functions
 
@@ -230,7 +231,10 @@ class Query(object):
             items = []
             for k, v in query.iteritems():
                 if isinstance(v, list):
-                    items.append('`%s` IN (%s)' % (k, ','.join(self.domain._encode(val) for val in v)))
+                    if v:
+                        items.append('`%s` IN (%s)' % (k, ','.join(self.domain._encode(val) for val in v)))
+                    else:
+                        items.append('1 = 0')
                 elif isinstance(v, dict):
                     if '$lt' in v:
                         items.append('`%s` < %s' % (k, self.domain._encode(v['$lt'])))
@@ -325,7 +329,7 @@ class Domain(object):
 
     def insert(self, attributes):
         keys, values = self._prepare_params(None, attributes)
-        query = 'REPLACE DELAYED INTO `%s` (%s) VALUES (%s)' % (self.name,
+        query = 'INSERT DELAYED INTO `%s` (%s) VALUES (%s)' % (self.name,
                                                                 ', '.join(keys),
                                                                 ', '.join(values))
         self._execute(query)
@@ -346,7 +350,6 @@ class Domain(object):
         self._execute('DROP TABLE `%s`' % self.name)
 
     def _execute(self, query_string, cursor=None):
-        print query_string
         if not cursor:
             cursor = self.connection.cursor()
         return cursor.execute(query_string)
@@ -358,6 +361,7 @@ class MongoDbModel(object):
     _save_list = None
     batched = True
     has_type = False
+    mutable = True
 
     # Attributes: id, type
 
@@ -533,6 +537,7 @@ class MongoDbModel(object):
 
 
 class GitObjectAssociation(MongoDbModel, common.CommonMixin):
+    mutable = False
     has_type = False
     key1_name = None
     key2_name = None
@@ -933,11 +938,17 @@ class Repository(MongoDbModel, common.CommonRepositoryMixin):
 
     @property
     def remote_heads(self):
-        return (self._remote_heads or '').split(',')
+        if self._remote_heads:
+            return self._remote_heads.split(',')
+        else:
+            return []
 
     @property
     def new_remote_heads(self):
-        return (self._new_remote_heads or '').split(',')
+        if self._remote_heads:
+            return self._remote_heads.split(',')
+        else:
+            return []
 
     @classmethod
     def get_indexed_before(cls, date):
