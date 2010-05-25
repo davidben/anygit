@@ -104,7 +104,7 @@ def fetch(repo, recover_mode=False, discover_only=False, get_count=False, packfi
     def progress(progress):
         pass
 
-    graph_walker = object_store.ObjectStoreGraphWalker(repo.remote_heads,
+    graph_walker = object_store.ObjectStoreGraphWalker(repo.clean_remote_heads,
                                                        get_parents)
     c = client.TCPGitClient(repo.host)
     c.fetch_pack(path=repo.path,
